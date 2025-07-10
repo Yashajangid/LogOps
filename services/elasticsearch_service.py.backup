@@ -1,0 +1,357 @@
+import os
+import json
+import logging
+import requests
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Any
+
+logger = logging.getLogger(__name__)
+
+class ElasticsearchService:
+    """Simple Elasticsearch service using only requests (no complex imports)"""
+    
+    def __init__(self):
+        self.es_host = os.getenv('ELASTICSEARCH_HOST', 'localhost:9200')
+        self.base_url = f"http://{self.es_host}"
+        self.connection_retries = 0
+        self.max_retries = 3
+        self.setup_connection()
+    
+    def setup_connection(self):
+        """Test connection and create sample data"""
+        try:
+            response = requests.get(f"{self.base_url}/_cluster/health", timeout=5)
+            if response.status_code == 200:
+                logger.info(f"Successfully connected to Elasticsearch at {self.es_host}")
+                self.create_sample_data()
+            else:
+                logger.error("Failed to connect to Elasticsearch")
+        except Exception as e:
+            logger.error(f"Error connecting to Elasticsearch: {str(e)}")
+    
+    def is_available(self) -> bool:
+        """Quick availability check"""
+        try:
+            response = requests.get(f"{self.base_url}/_cluster/health", timeout=2)
+            return response.status_code == 200
+        except:
+            return False
+    
+    def create_sample_data(self):
+        """Create sample data if none exists"""
+        try:
+            # Check if we have data
+            response = requests.get(f"{self.base_url}/logops-logs-*/_count", timeout=5)
+            if response.status_code == 200:
+                count = response.json().get('count', 0)
+                if count > 0:
+                    logger.info(f"Found {count} existing logs in Elasticsearch")
+                    return
+            
+            # Create sample data
+            logger.info("Creating sample data...")
+            sample_logs = self.generate_sample_data()
+            result = self.bulk_index_logs(sample_logs)
+            logger.info(f"Created {result['indexed']} sample log entries")
+                
+        except Exception as e:
+            logger.error(f"Error creating sample data: {str(e)}")
+    
+    def generate_sample_data(self) -> List[Dict[str, Any]]:
+        """Generate comprehensive sample data"""
+        import random
+        
+        applications = {
+            'FOBPM': ['Bulkdeviceenrollment', 'Bulkordervalidation', 'IOTSubscription'],
+            'BOBPM': ['IOTSubscription', 'Bulkordervalidation', 'MobilitySubscription'],
+            'BRMS': ['MobilityPromotionTreatmentRules', 'MobilityDeviceTreatmentRules', 'BusinessRules'],
+            'CIMS': ['CustomerManagement', 'InventoryTracking'],
+            'DIMS': ['DeviceManagement', 'NetworkMonitoring']
+        }
+        
+        clusters = ['Cluster Prod AKS 1', 'Cluster Prod AKS 2', 'Cluster Prod AKS 3', 'Cluster Prod AKS 4']
+        
+        log_messages = {
+            'INFO': [
+                'Service started successfully',
+                'Processing request completed',
+                'Health check passed',
+                'Database connection established',
+                'User authenticated successfully',
+                'Request processed in {}ms',
+                'Cache hit for key: user_{}',
+                'Background job completed',
+                'Configuration loaded successfully'
+            ],
+            'WARN': [
+                'High memory usage detected: {}%',
+                'Response time degradation: {}s',
+                'Queue backlog growing: {} pending items',
+                'Connection pool near capacity: {}%',
+                'Cache miss ratio high: {}%',
+                'Slow query detected: {}ms',
+                'Retry attempt {} for failed operation'
+            ],
+            'ERROR': [
+                'Database connection timeout after {}s',
+                'Failed to process request: connection refused',
+                'Authentication failed: invalid credentials',
+                'OutOfMemoryError: Java heap space',
+                'Network timeout: connection reset by peer',
+                'Service temporarily unavailable',
+                'Invalid request format',
+                'Transaction rollback due to error'
+            ]
+        }
+        
+        sample_logs = []
+        base_time = datetime.now() - timedelta(days=1)
+        
+        for app_name, bundles in applications.items():
+            for cluster in clusters[:3]:  # Use first 3 clusters
+                for bundle in bundles:
+                    for service_num in range(1, 4):  # 3 pods per bundle
+                        pod_name = f"{app_name.lower()}-{bundle.lower()}-web-{service_num:03d}"
+                        
+                        # Generate 20-50 logs per pod
+                        log_count = random.randint(20, 50)
+                        
+                        for _ in range(log_count):
+                            # Random time within the last 24 hours
+                            log_time = base_time + timedelta(
+                                hours=random.randint(0, 23),
+                                minutes=random.randint(0, 59),
+                                seconds=random.randint(0, 59)
+                            )
+                            
+                            # Weight log levels: 70% INFO, 20% WARN, 10% ERROR
+                            level = random.choices(
+                                ['INFO', 'WARN', 'ERROR'],
+                                weights=[70, 20, 10]
+                            )[0]
+                            
+                            # Select and format message
+                            message_template = random.choice(log_messages[level])
+                            
+                            if '{}' in message_template:
+                                if 'ms' in message_template:
+                                    message = message_template.format(random.randint(50, 2000))
+                                elif '%' in message_template:
+                                    message = message_template.format(random.randint(70, 95))
+                                elif 's' in message_template and 'timeout' in message_template:
+                                    message = message_template.format(random.randint(30, 120))
+                                elif 'pending' in message_template:
+                                    message = message_template.format(random.randint(50, 500))
+                                elif 'attempt' in message_template:
+                                    message = message_template.format(random.randint(1, 5))
+                                else:
+                                    message = message_template.format(random.randint(100, 999))
+                            else:
+                                message = message_template
+                            
+                            log_entry = {
+                                '@timestamp': log_time.isoformat(),
+                                'timestamp': log_time.isoformat(),
+                                'application': app_name,
+                                'cluster': cluster,
+                                'bundle': bundle,
+                                'pod': pod_name,
+                                'log_level': level,
+                                'log_message': message,
+                                'message': message,
+                                'source_file': 'elasticsearch_service'
+                            }
+                            
+                            # Add performance metrics occasionally
+                            if random.random() < 0.3:
+                                log_entry['response_time'] = round(random.uniform(0.1, 5.0), 3)
+                            
+                            if random.random() < 0.2:
+                                log_entry['status_code'] = random.choice([200, 201, 400, 401, 404, 500])
+                            
+                            sample_logs.append(log_entry)
+        
+        return sample_logs
+    
+    def search_logs(self, query_params: Dict[str, Any]) -> Dict[str, Any]:
+        """Search logs using direct HTTP requests"""
+        try:
+            if not self.is_available():
+                return {'logs': [], 'total': 0, 'error': 'Elasticsearch not available'}
+            
+            # Build search query
+            query = {
+                "query": {"bool": {"must": []}},
+                "size": query_params.get('size', 100),
+                "sort": [{"@timestamp": {"order": "desc"}}]
+            }
+            
+            # Add filters
+            for field in ['application', 'cluster', 'bundle', 'pod', 'log_level']:
+                if query_params.get(field):
+                    query["query"]["bool"]["must"].append({
+                        "term": {field: query_params[field]}
+                    })
+            
+            # Text search
+            if query_params.get('search_text'):
+                query["query"]["bool"]["must"].append({
+                    "multi_match": {
+                        "query": query_params['search_text'],
+                        "fields": ["log_message", "message"]
+                    }
+                })
+            
+            # Execute search
+            response = requests.post(
+                f"{self.base_url}/logops-logs-*/_search",
+                json=query,
+                headers={'Content-Type': 'application/json'},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                logs = []
+                for hit in data['hits']['hits']:
+                    log_entry = hit['_source']
+                    log_entry['_id'] = hit['_id']
+                    logs.append(log_entry)
+                
+                return {
+                    'logs': logs,
+                    'total': data['hits']['total']['value'],
+                    'page': query_params.get('page', 1),
+                    'size': len(logs)
+                }
+            
+            return {'logs': [], 'total': 0, 'error': f'HTTP {response.status_code}'}
+            
+        except Exception as e:
+            logger.error(f"Error searching logs: {str(e)}")
+            return {'logs': [], 'total': 0, 'error': str(e)}
+    
+    def bulk_index_logs(self, logs: List[Dict[str, Any]]) -> Dict[str, int]:
+        """Bulk index logs using HTTP requests"""
+        try:
+            if not logs:
+                return {'indexed': 0, 'errors': 0}
+            
+            # Prepare bulk data
+            bulk_data = []
+            today = datetime.now().strftime('%Y.%m.%d')
+            index_name = f'logops-logs-{today}'
+            
+            for log_entry in logs:
+                bulk_data.append(json.dumps({'index': {'_index': index_name}}))
+                bulk_data.append(json.dumps(log_entry))
+            
+            bulk_body = '\n'.join(bulk_data) + '\n'
+            
+            response = requests.post(
+                f"{self.base_url}/_bulk",
+                data=bulk_body,
+                headers={'Content-Type': 'application/x-ndjson'},
+                timeout=60
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                indexed = len([item for item in result['items'] 
+                             if 'index' in item and item['index']['status'] in [200, 201]])
+                errors = len(result['items']) - indexed
+                
+                logger.info(f"Bulk indexed {indexed} logs with {errors} errors")
+                return {'indexed': indexed, 'errors': errors}
+            
+            return {'indexed': 0, 'errors': len(logs)}
+            
+        except Exception as e:
+            logger.error(f"Bulk index error: {str(e)}")
+            return {'indexed': 0, 'errors': len(logs)}
+    
+    def get_log_statistics(self, filters: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Get log statistics"""
+        try:
+            query = {
+                "query": {"match_all": {}},
+                "size": 0,
+                "aggs": {
+                    "log_levels": {"terms": {"field": "log_level", "size": 10}},
+                    "applications": {"terms": {"field": "application", "size": 20}},
+                    "clusters": {"terms": {"field": "cluster", "size": 20}},
+                    "pods": {"terms": {"field": "pod", "size": 100}},
+                    "bundles": {"terms": {"field": "bundle", "size": 50}}
+                }
+            }
+            
+            if filters:
+                must_filters = []
+                for field in ['application', 'cluster', 'bundle']:
+                    if filters.get(field):
+                        must_filters.append({"term": {field: filters[field]}})
+                
+                if must_filters:
+                    query["query"] = {"bool": {"must": must_filters}}
+            
+            response = requests.post(
+                f"{self.base_url}/logops-logs-*/_search",
+                json=query,
+                headers={'Content-Type': 'application/json'},
+                timeout=15
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                aggs = data.get('aggregations', {})
+                
+                return {
+                    'total_logs': data['hits']['total']['value'],
+                    'log_levels': {b['key']: b['doc_count'] for b in aggs.get('log_levels', {}).get('buckets', [])},
+                    'applications': {b['key']: b['doc_count'] for b in aggs.get('applications', {}).get('buckets', [])},
+                    'clusters': {b['key']: b['doc_count'] for b in aggs.get('clusters', {}).get('buckets', [])},
+                    'pods': {b['key']: b['doc_count'] for b in aggs.get('pods', {}).get('buckets', [])},
+                    'bundles': {b['key']: b['doc_count'] for b in aggs.get('bundles', {}).get('buckets', [])}
+                }
+            
+            return {'error': f'HTTP {response.status_code}'}
+            
+        except Exception as e:
+            logger.error(f"Statistics error: {str(e)}")
+            return {'error': str(e)}
+    
+    def get_health_status(self) -> Dict[str, Any]:
+        """Get Elasticsearch health status"""
+        try:
+            response = requests.get(f"{self.base_url}/_cluster/health", timeout=5)
+            if response.status_code == 200:
+                health = response.json()
+                
+                # Get index statistics
+                stats_response = requests.get(f"{self.base_url}/logops-*/_stats", timeout=5)
+                indices = {}
+                if stats_response.status_code == 200:
+                    stats_data = stats_response.json()
+                    for name, stats in stats_data.get('indices', {}).items():
+                        indices[name] = {
+                            'doc_count': stats['total']['docs']['count'],
+                            'store_size': stats['total']['store']['size_in_bytes']
+                        }
+                
+                return {
+                    'status': health['status'],
+                    'cluster_name': health['cluster_name'],
+                    'number_of_nodes': health['number_of_nodes'],
+                    'indices': indices,
+                    'available': True,
+                    'timestamp': datetime.now().isoformat()
+                }
+            
+            return {'status': 'error', 'available': False, 'error': f'HTTP {response.status_code}'}
+            
+        except Exception as e:
+            return {'status': 'error', 'available': False, 'error': str(e)}
+
+
+# Global service instance
+elasticsearch_service = ElasticsearchService()

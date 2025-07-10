@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: log-auto-django
+    env: python
+    plan: free
+    buildCommand: |
+      pip install -r requirements.txt
+      python manage.py collectstatic --noinput
+      python manage.py migrate
+    startCommand: gunicorn log_manager.wsgi:application
+    envVars:
+      - key: DEBUG
+        value: "False"
+      - key: DJANGO_ALLOWED_HOSTS
+        value: "log-auto-django.onrender.com"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ELASTICSEARCH_HOST
+        value: "ac3ac17baa504fe78bd6eef8734062c7.us-central1.gcp.cloud.es.io"
+      - key: ELASTICSEARCH_API_KEY
+        value: "bnE2V3o1Y0JneUp0Tk9Zd0toVE46V3dGYWl5ZXUtenhXcWdDRWk1WjBPUQ=="
+
+  - type: static
+    name: staticfiles
+    env: static
+    buildCommand: echo "No build step for static files"
+    staticPublishPath: staticfiles

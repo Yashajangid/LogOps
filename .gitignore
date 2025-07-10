@@ -1,0 +1,77 @@
+# Binaries
+*.dll
+
+# Local Elasticsearch & Kibana
+elasticsearch-*/
+elasticsearch/**/bin/
+elasticsearch/**/modules/
+elasticsearch/**/plugins/
+kibana/
+
+# Python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+
+# Virtual Env
+venv/
+env/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Secrets
+.env
+.env.*
+
+# IDEs & OS
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temp & Logs
+logs/
+*.log
+tmp/
+temp/
+
+# Misc Data
+*.ipynb
+*.csv
+*.tsv
+*.json
+*.xml
+*.html
